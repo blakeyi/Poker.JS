@@ -1,0 +1,36 @@
+<html>
+    <script src="../release/poker.min.js"></script> <!-- 确保路径正确 -->
+    <body>
+        <canvas id="myowncanvas" width="1280" height="720"></canvas>
+    </body>
+    <script>
+        var canvas = document.getElementById('myowncanvas').getContext('2d');
+        var src = { x: 10, y: 10 }; // 初始位置
+        var dst = { x: 1000, y: 10 } // 结束位置
+
+        function moveTo(src, dst) {
+            debugger
+            if (src.x > dst.x || src.y > dst.y) {
+                return
+            }
+            var dx = 2; // 水平移动速度
+            var dy = 0; // 垂直方向速度，这里为0
+
+            // 清除画布
+            canvas.clearRect(0, 0, canvas.canvas.width, canvas.canvas.height);
+
+            // 更新位置
+            src.x += dx;
+            src.y += dy;
+
+            // 绘制扑克牌
+
+            canvas.drawPokerCard(src.x, src.y, 120, 'hearts', '6');
+            
+            requestAnimationFrame(()=>moveTo(src, dst));
+        }
+        // canvas.drawPokerCard(src.x, src.y, 120, 'hearts', '6');
+        // 开始动画
+        requestAnimationFrame(()=>moveTo(src, dst));
+    </script>
+</html>
