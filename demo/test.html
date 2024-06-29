@@ -1,36 +1,118 @@
 <html>
-    <script src="../release/poker.min.js"></script> <!-- 确保路径正确 -->
-    <body>
-        <canvas id="myowncanvas" width="1280" height="720"></canvas>
-    </body>
-    <script>
-        var canvas = document.getElementById('myowncanvas').getContext('2d');
-        var src = { x: 10, y: 10 }; // 初始位置
-        var dst = { x: 1000, y: 10 } // 结束位置
+<script src="../release/poker.min.js"></script> <!-- 确保路径正确 -->'
+<script src="./pokerManager.js"></script> <!-- 确保路径正确 -->'
 
-        function moveTo(src, dst) {
-            debugger
-            if (src.x > dst.x || src.y > dst.y) {
-                return
-            }
-            var dx = 2; // 水平移动速度
-            var dy = 0; // 垂直方向速度，这里为0
+<body>
+    <canvas id="myowncanvas" width="1400" height="880"></canvas>
+</body>
+<script>
+    var canvas = document.getElementById('myowncanvas').getContext('2d');
+    var src = { x: 10, y: 10 }; // 初始位置
+    var dst = { x: 1000, y: 10 } // 结束位置
+    let rules = {
+        "2": 20,
+        "3": 30
+    }
+    let mgr = new PokerManager({
+        canvas: document.getElementById('myowncanvas'),
+        cardSize: 80,
+        rules: rules,
+    })
 
-            // 清除画布
-            canvas.clearRect(0, 0, canvas.canvas.width, canvas.canvas.height);
+    let users = [{
+        userID: "123",
+        chair: 0
+    }, {
+        userID: "456",
+        chair: 1
+    }, {
+        userID: "789",
+        chair: 2
+    }]
 
-            // 更新位置
-            src.x += dx;
-            src.y += dy;
-
-            // 绘制扑克牌
-
-            canvas.drawPokerCard(src.x, src.y, 120, 'hearts', '6');
-            
-            requestAnimationFrame(()=>moveTo(src, dst));
+    mgr.runAction("deal", {
+        "users": users,
+        args: {
+            "needCard": false,
+            "isShow": false
         }
-        // canvas.drawPokerCard(src.x, src.y, 120, 'hearts', '6');
-        // 开始动画
-        requestAnimationFrame(()=>moveTo(src, dst));
-    </script>
+    }, 0)
+
+    mgr.runAction("heiwai", {
+        chair: 0,
+        isHeiwa: false
+    }, 1)
+
+    mgr.runAction("heiwai", {
+        chair: 1,
+        isHeiwa: false
+    }, 2)
+
+    mgr.runAction("heiwai", {
+        chair: 2,
+        isHeiwa: true
+    }, 3)
+
+    mgr.runAction("deal", {
+        "users": users,
+        args: {
+            "needCard": false,
+            "isShow": true
+        }
+    }, 4)
+
+    mgr.runAction("result", {
+        
+    }, 5)
+    
+    // mgr.runAction("auction", {
+    //     chair: 0,
+    //     auction: 1
+    // }, 5)
+
+    // mgr.runAction("auction", {
+    //     chair: 1,
+    //     auction: 0
+    // }, 6)
+
+    // mgr.runAction("auction", {
+    //     chair: 2,
+    //     auction: 3
+    // }, 7)
+
+    // mgr.runAction("bottom", {
+    //     chair: 2
+    // }, 8)
+
+    // for (let i = 0; i < 3; i++) { 
+    //     mgr.runAction("double", {
+    //         chair: i,
+    //         double:i 
+    //     }, 9)
+    // }
+
+
+    // mgr.runAction("throw", {
+    //     chair: 2,
+    //     throws: "H4",
+    //     isNewRound:true,
+    // }, 10)
+
+    // mgr.runAction("throw", {
+    //     chair: 0,
+    //     throws: "",
+    //     isNewRound:false,
+    // }, 10)
+
+    // mgr.runAction("pass", {
+    //     "users":users,
+    // }, 0)
+
+    // mgr.runAction("result", {
+    //     "users":users,
+    // }, 0)
+
+
+</script>
+
 </html>
