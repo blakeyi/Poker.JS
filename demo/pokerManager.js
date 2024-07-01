@@ -6,6 +6,7 @@ const cardColorMap = new Map([
     ["C", "clubs"],
     ["D", "diamond"],
     ["S", "spade"],
+    ["J", ""]
 ])
 
 const cardColorMapRe = new Map([
@@ -13,25 +14,29 @@ const cardColorMapRe = new Map([
     ["clubs", "C"],
     ["diamond", "D"],
     ["spade", "S"],
+    ["", "J"],
 ])
 
 const MAX_PERSON_CARD_NUM = 20
 
 const cardValueMap = new Map([
+    ['X', 10],
     ['J', 11],
     ['Q', 12],
     ['K', 13],
     ['A', 14],
+    ['O1', 53],
+    ['O2', 54],
 ])
 
-const AREA_ORIGIN = 0
+const AREA_ORIGIN = 0 // 正常发牌区
 const AREA_THROW = 1
 const AREA_NAME = 2
 const AREA_CENTER = 3
 
-const CELL_WIDTH = 100
+const CELL_WIDTH = 120
 const CELL_HEIGHT = 50
-const COL_NUM = 3
+const COL_NUM = 4
 const ROW_NUM = 4
 
 // Fisher-Yates 洗牌算法
@@ -95,7 +100,49 @@ function isNumeric(str) {
     return !isNaN(parseInt(str)) && parseInt(str) == str;
 }
 
-class PokerManager {
+class Stack {
+    constructor() {
+      this.items = []; // 存储栈元素的数组
+    }
+  
+    // 入栈操作
+    push(element) {
+      this.items.push(element);
+    }
+  
+    // 出栈操作
+    pop() {
+      if (this.isEmpty()) {
+        return 'Stack is empty'; // 如果栈为空，返回提示信息
+      }
+      return this.items.pop();
+    }
+  
+    // 查看栈顶元素，但不移除
+    peek() {
+      if (this.isEmpty()) {
+        return 'Stack is empty'; // 如果栈为空，返回提示信息
+      }
+      return this.items[this.items.length - 1];
+    }
+  
+    // 检查栈是否为空
+    isEmpty() {
+      return this.items.length === 0;
+    }
+  
+    // 获取栈的大小
+    size() {
+      return this.items.length;
+    }
+  
+    // 清空栈
+    clear() {
+      this.items = [];
+    }
+  }
+
+export class PokerManager {
     constructor({
         canvas,
         cardSize = 100,
@@ -122,6 +169,7 @@ class PokerManager {
             bottomCards: "",
             rules: rules
         }
+        this.actionStack = new Stack() // 保存每个action操作之前的状态, 用于恢复
         this.init();
     }
 
@@ -131,16 +179,17 @@ class PokerManager {
     // 发牌
     initUsers(users, args = {}) {
         if (!args.isShow) {
-            let needCard = args?.needCard || true;
+            let needCard = args.needCard
             this.cardInfo.userList = new Array().fill({})
             for (let user of users) {
                 let chair = user.chair;
                 this.cardInfo.userList[chair] = {
-                    cards: needCard ? user.cards : "",
+                    cards: !needCard ? this.sortCard(user.cards, this.cardInfo.rules) : "",
                     chair: user.chair,
                     userID: user.userID
                 };
             }
+            this.cardInfo.bottomCards = args.bottomCards
 
             if (needCard) {
                 // 调用发牌函数并打印结果
@@ -152,34 +201,54 @@ class PokerManager {
                 }
                 this.cardInfo.bottomCards = this.sortCard(result.bottomCards, this.cardInfo.rules);
             }
-            console.log(this.cardInfo);
+            // this.drawBgLine()
             this.initUserPosition()
+            console.log(this.cardInfo);
         }
 
 
 
         if (args.isShow) {
-            this.cleanThrowArea()
             this.initPokerLayout()
+    
         }
     }
 
     initUserPosition() {
-        let isThrow = false
         for (let user of this.cardInfo.userList) {
-            this.drawText(user.chair, user.userID, isThrow)
+            this.drawText(user.chair, user.userID, AREA_NAME)
         }
     }
 
     initPokerLayout() {
         // 绘制底牌
         this.dealCards("top_bottom", this.cardInfo.bottomCards)
+        
         // 绘制玩家牌
         for (let user of this.cardInfo.userList) {
             let chair = user.chair;
             let type = this.getTypeByChair(chair)
+            console.log(`initPokerLayout: chair:${chair} card:${user.cards}`);
             this.dealCards(type, user.cards)
+        }
+    }
 
+    drawBgLine() {
+        // 设置格子线的颜色
+        this.ctx.strokeStyle = '#000000';
+
+        // 绘制水平线
+        for (let y = 0; y < this.canvas.height; y += this.cardHeight) {
+            this.ctx.moveTo(0, y); // 移动画笔到 x=0, y
+            this.ctx.lineTo(this.canvas.width, y); // 画线到 x=canvas.width
+            this.ctx.stroke(); // 绘制线条
+        }
+
+        // 绘制垂直线
+        for (let x = 0; x < this.canvas.width; x += this.cardWidth) {
+            this.ctx.moveTo(x, 0); // 移动画笔到 x, y=0
+            this.ctx.lineTo(x, this.canvas.height); // 画线到 x, y=canvas.height
+            this.ctx.stroke(); // 绘制线条
         }
     }
 
@@ -192,9 +261,10 @@ class PokerManager {
             value = parseInt(cardValue)
         } else {
             let temp = cardValue
-            if (typeof cardValue === "O") {
+            if (cardValue === "O") {
                 temp = this.getQueueValue(cardColor)
             }
+            
             value = cardValueMap.get(temp)
         }
 
@@ -217,9 +287,9 @@ class PokerManager {
     getTypeByChair(chair) {
         if (chair == 0) {
             return "bottom"
-        } else if (chair == 1) {
-            return "right"
         } else if (chair == 2) {
+            return "right"
+        } else if (chair == 1) {
             if (this.cardInfo.userList.length == 3) {
                 return "left"
             } else {
@@ -230,84 +300,97 @@ class PokerManager {
         }
     }
 
+    // type是座位位置, 上下左右
+    // area是牌的位置, 个人信息区, 牌区, 出牌区
+    // cardNum是用来计算起始位置和长宽的, 保证牌在中心位置
     // 根据牌的数量和牌的大小计算起始位置
     // 牌的象素高度。牌的宽高比固定为3(h):4(w)。缺省值为200, 高度为4, 宽度为3
     // space为每张牌之间的间隔, 分为横向间隔和纵向间隔
     // 先计算牌总宽度, w = cardWidth + (cardNum - 1) * space
     // 然后起始位置就是 canvas的中心宽度减去牌总宽度的一半, 纵向也是这样计算
     // 如果是出牌位置的, 需要注意下向上或者向左右偏移
-    calcStartPos(type, cardNum, args = { isThrow: false, isName: false }) {
-        let margin = 0
-        let pos = {}
+    calcStartPos(type, area, cardNum) {
+        let pos = {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0
+        }
         switch (type) {
             case "bottom":
-                if (args?.isThrow) {
-                    margin = this.hSpace * 1.5
-                } else if (args?.isName) {
-                    margin = 0 - (this.cardHeight + this.hSpace)
-                }
-                pos = {
-                    x: Math.floor(this.canvas.width / 2 - (this.cardWidth + (cardNum - 1) * this.wSpace)),
-                    y: Math.floor(this.canvas.height - this.cardHeight - 50) - margin,
+                // x计算规则一样, y计算规则不一样
+                pos.width = Math.floor(this.cardWidth + (cardNum - 1) * this.wSpace)
+                pos.height = Math.floor(this.cardHeight)
+                pos.x = Math.floor(this.canvas.width / 2 - (this.cardWidth + (cardNum - 1) * this.wSpace) / 2)
+                if (area == AREA_NAME) {
+                    pos.y = Math.floor(this.canvas.height - this.cardHeight *  0.7)
+                } else if (area == AREA_ORIGIN) {
+                    pos.y = Math.floor(this.canvas.height - 2 * this.cardHeight)
+                } else if (area == AREA_THROW) {
+                    pos.y = Math.floor(this.canvas.height - 3 * this.cardHeight - 0.5* this.hSpace)
                 }
                 break
-
-            case "left":
-                if (args.isThrow) {
-                    margin = this.cardHeight + this.hSpace
-                } else if (args.isName) {
-                    margin = 0 - (this.cardWidth)
-                }
-                pos = {
-                    x: Math.floor(this.cardWidth + this.wSpace + margin),
-                    y: Math.floor(this.canvas.height / 2 - (this.cardHeight + (cardNum - 1) * this.hSpace)),
-                }
-                break;
-
             case "top":
-                if (args.isThrow) {
-                    margin = this.cardHeight + this.hSpace
-                } else if (args.isName) {
-                    margin = this.cardHeight - this.hSpace
-                }
-                pos = {
-                    x: Math.floor(this.canvas.width / 2 - (this.cardWidth + (cardNum - 1) * this.wSpace)),
-                    y: Math.floor(this.cardHeight * 1.5 + margin),
+                // x计算规则一样, y计算规则不一样
+                // top要多预留1.5个cardHeight 给底牌显示
+                pos.width = Math.floor(this.cardWidth + (cardNum - 1) * this.wSpace)
+                pos.height = Math.floor(this.cardHeight)
+                pos.x = Math.floor(this.canvas.width / 2 - pos.width / 2)
+                if (area == AREA_NAME) {
+                    pos.y = Math.floor(1.5 * this.cardHeight)
+                } else if (area == AREA_ORIGIN) {
+                    pos.y = Math.floor(1.5 * this.cardHeight + 1 * this.cardHeight)
+                } else if (area == AREA_THROW) {
+                    pos.y = Math.floor(1.5 * this.cardHeight + 2 * this.cardHeight)
                 }
                 break;
-
-            case "right":
-                if (args.isThrow) {
-                    margin = this.cardHeight + this.hSpace
-                } else if (args.isName) {
-                    margin = 0 - (this.cardWidth + this.wSpace)
+            case "left":
+                pos.width = Math.floor(this.cardWidth * 1.5)
+                // top要多预留1.5个cardHeight 给底牌显示
+                pos.height = Math.floor(this.cardHeight + (cardNum - 1) * this.hSpace)
+                pos.y = Math.floor(this.canvas.height / 2 - pos.height / 2)
+                if (area == AREA_NAME) {
+                    pos.x = Math.floor(0 + this.wSpace)
+                } else if (area == AREA_ORIGIN) {
+                    pos.x = Math.floor(1 * this.cardWidth + this.wSpace / 3)
+                } else if (area == AREA_THROW) {
+                    pos.x = Math.floor(2 * this.cardWidth + this.wSpace)
                 }
-                pos = {
-                    x: Math.floor(this.canvas.width - 2 * this.cardWidth - this.wSpace - margin),
-                    y: Math.floor(this.canvas.height / 2 - (this.cardHeight + (cardNum - 1) * this.hSpace)),
+                break;
+            case "right":
+                pos.width = Math.floor(this.cardWidth * 1.5)
+                // top要多预留1.5个cardHeight 给底牌显示
+                pos.height = Math.floor(this.cardHeight + (cardNum + 1) * this.hSpace)
+                pos.y = Math.floor(this.canvas.height / 2 - pos.height / 2)
+                if (area == AREA_NAME) {
+                    pos.x = Math.floor(this.canvas.width - this.wSpace / 3)
+                } else if (area == AREA_ORIGIN) {
+                    pos.x = Math.floor(this.canvas.width - 2 * this.cardWidth)
+                } else if (area == AREA_THROW) {
+                    pos.x = Math.floor(this.canvas.width - 3 * this.cardWidth - this.wSpace)
                 }
                 break;
 
             case "top_bottom":
-                if (args.isThrow) {
-                    margin = this.cardHeight + this.hSpace
-                } else if (args.isName) {
-                    margin = this.cardHeight - this.hSpace
-                }
-                pos = {
-                    x: Math.floor(this.canvas.width / 2 - (this.cardWidth + (cardNum - 1) * this.wSpace)),
-                    y: Math.floor(10),
-                }
+                pos.width = Math.floor(this.cardWidth * this.bottomNum)
+                pos.height = Math.floor(this.cardHeight)
+                pos.y = 0
+                pos.x = Math.floor(this.canvas.width / 2 - pos.width / 2)
                 break;
+
             case "center":
-                pos = {
-                    x: Math.floor(this.canvas.width / 2 - CELL_WIDTH * (COL_NUM / 2)),
-                    y: Math.floor(this.canvas.height / 2 - CELL_HEIGHT * (ROW_NUM / 2)),
-                }
+                pos.width = Math.floor(CELL_WIDTH * COL_NUM)
+                pos.height = Math.floor(CELL_HEIGHT * ROW_NUM)
+                pos.y = Math.floor(this.canvas.height / 2 - pos.height / 2)
+                pos.x = Math.floor(this.canvas.width / 2 - pos.width / 2)
+
                 break;
+
         }
+
         return pos
     }
+
     drawOneCard() {
         this.ctx.drawPokerCard(0, 0, 100, 1, 1);
     }
@@ -346,6 +429,18 @@ class PokerManager {
                 num = "10"
                 i++
             }
+            if (num == "X") {
+                num = "10"
+            }
+
+            if (color == "") {
+                if (num == "L") {
+                    color = "spade"
+                } else {
+                    color = "diamond"
+                }
+                num = "O"
+            }
             result.push({ color, num })
         }
         return result;
@@ -363,10 +458,9 @@ class PokerManager {
 
     // 画牌
     dealCards(type, cards, isThrow = false) {
+        let area = isThrow ? AREA_THROW : AREA_ORIGIN
         let realCards = this.getCardList(cards)
-        let startPos = this.calcStartPos(type, realCards.length / 2, { isThrow });
-        console.log(this.canvas.width, this.canvas.height);
-        console.log(startPos);
+        let startPos = this.calcStartPos(type, area, realCards.length);
         for (var i = 0; i < realCards.length; i++) {
             if (type == "bottom" || type == "top" || type == "top_bottom") {
                 this.ctx.drawPokerCard(startPos.x + this.wSpace * i, startPos.y, this.cardSize, realCards[i].color, realCards[i].num);
@@ -401,59 +495,58 @@ class PokerManager {
         realHands.push(...realBottom)
         return this.sortCard(this.getCardStr(realHands), this.cardInfo.rules)
     }
-    cleanThrowArea() {
+    clearThrowArea() {
         this.clearCanvas("bottom", AREA_THROW)
         this.clearCanvas("left", AREA_THROW)
         this.clearCanvas("right", AREA_THROW)
-        this.clearCanvas("top", AREA_THROW)
     }
 
     // 清理画布指定位置
     clearCanvas(type, area) {
-        let startPos;
-        let isThrow = area == AREA_THROW
-        let isName = area == AREA_NAME
-        let multi = area == AREA_THROW ? -1 : 0
-        switch (type) {
-            case "bottom":
-                startPos = this.calcStartPos(type, MAX_PERSON_CARD_NUM / 2, { isThrow, isName });
-                this.ctx.clearRect(startPos.x, startPos.y + this.cardHeight * multi, (this.cardWidth + (MAX_PERSON_CARD_NUM - 1) * this.wSpace), 1.5 * this.cardHeight);
-                break;
-            case "left":
-                startPos = this.calcStartPos(type, MAX_PERSON_CARD_NUM / 2, { isThrow, isName });
-                this.ctx.clearRect(startPos.x, startPos.y, this.cardWidth, this.cardHeight + (MAX_PERSON_CARD_NUM - 1) * this.hSpace);
-                break;
-            case "right":
-                startPos = this.calcStartPos(type, MAX_PERSON_CARD_NUM / 2, { isThrow, isName });
-                this.ctx.clearRect(startPos.x, startPos.y, this.cardWidth + this.wSpace, this.cardHeight + (MAX_PERSON_CARD_NUM - 1) * this.hSpace);
-                break;
-            case "top":
-                startPos = this.calcStartPos(type, MAX_PERSON_CARD_NUM / 2, { isThrow, isName });
-                this.ctx.clearRect(startPos.x, startPos.y, this.cardWidth + (MAX_PERSON_CARD_NUM - 1) * this.wSpace, this.cardHeight);
-                break;
-            case "top_bottom":
-                startPos = this.calcStartPos(type, 4, { isThrow, isName });
-                this.ctx.clearRect(startPos.x, startPos.y, this.cardWidth + 6 * this.wSpace, this.cardHeight);
-                break;
+        let cardNum = MAX_PERSON_CARD_NUM
+        if (area == AREA_NAME) {
+            cardNum = 2
         }
+        if (area == AREA_THROW) {
+            cardNum = MAX_PERSON_CARD_NUM / 2
+        }
+        let startPos = this.calcStartPos(type, area, cardNum);
+        this.ctx.clearRect(startPos.x, startPos.y, startPos.width, startPos.height);
     }
 
     clear(x, y, width, height) {
         this.ctx.clearRect(x, y, width, height);
     }
 
+    clearAll() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+
+    restoreCanvas() {
+        if (this.actionStack.isEmpty()) {
+            return false
+        }
+        let imageData = this.actionStack.pop()
+        this.ctx.putImageData(imageData, 0, 0);
+        return true
+    }
+
     runAction(action, args, wait = 2) {
         let timeout = wait * 1000
+        let imageData;
         setTimeout(() => {
+            // 执行状态前, 先保存当前状态
+            imageData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+            this.actionStack.push(imageData)
             switch (action) {
                 case "deal": // 发牌
                     this.actionsDeal(args.users, args.args)
                     break;
                 case "throw":
-                    this.actionThrow(args.chair, args.throws, args.isNewRound)
+                    this.actionThrow(args.chair, args.throws)
                     break;
-                case "heiwai":
-                    this.actionHeiwai(args.chair, args.isHeiwa)
+                case "heiwa":
+                    this.actionHeiwa(args.chair, args.isHeiwa)
                     break;
                 case "auction":
                     this.actionAuction(args.chair, args.auction)
@@ -465,17 +558,21 @@ class PokerManager {
                     this.actionDouble(args.chair, args.double)
                     break;
                 case "result":
-                    this.actionResult(args.chair, args.double)
+                    this.actionResult(args.resultInfos)
+                    break;
+                case "newRound": // 新的一轮, 清空出牌区
+                    this.actionNewRound()
                     break;
 
             }
         }, timeout)
     }
 
-    actionThrow(chair, throws, isNewRound) {
-        if (isNewRound) {
-            this.cleanThrowArea()
-        }
+    actionNewRound() {
+        this.clearThrowArea()
+    }
+
+    actionThrow(chair, throws) {
         if (throws != "") {
             this.throwCards(chair, throws)
         } else {
@@ -484,8 +581,8 @@ class PokerManager {
 
     }
 
-    actionResult(chair, double) {
-        this.drawResult()
+    actionResult(resultInfos) {
+        this.drawResult(resultInfos)
     }
 
     actionDouble(chair, double) {
@@ -499,10 +596,8 @@ class PokerManager {
     }
 
     actionGiveBottom(chair) {
-        this.cleanThrowArea()
         // 动画暂时不做, 先手牌减少, 然后出牌位置显示
         let now = this.getAddCards(this.cardInfo.userList[chair].cards, this.cardInfo.bottomCards)
-        console.log(now);
         let type = this.getTypeByChair(chair)
         this.clearCanvas(type, AREA_ORIGIN)
         this.dealCards(type, now)
@@ -518,8 +613,9 @@ class PokerManager {
     actionsDeal(users, args) {
         this.initUsers(users, args)
     }
-    actionHeiwai(chair, isHeiwa) {
+    actionHeiwa(chair, isHeiwa) {
         let text = isHeiwa ? "黑挖" : "不挖"
+        console.log("actionHeiwa:", chair, isHeiwa);
         this.drawText(chair, text)
     }
 
@@ -528,7 +624,6 @@ class PokerManager {
         let type = this.getTypeByChair(chair)
         let hands = this.cardInfo.userList[chair].cards
         let remains = this.getRemainCards(hands, throws)
-        console.log(remains);
         this.clearCanvas(type, AREA_ORIGIN)
         this.dealCards(type, remains)
         this.clearCanvas(type, AREA_THROW)
@@ -537,25 +632,40 @@ class PokerManager {
     }
 
 
-    drawText(chair, text, isThrow = true) {
+    drawText(chair, text, area = AREA_THROW) {
         let type = this.getTypeByChair(chair)
-        let area = isThrow ? AREA_THROW : AREA_NAME
         this.clearCanvas(type, area)
-        let isName = !isThrow
-        let pos = this.calcStartPos(type, 1, { isThrow: isThrow, isName: isName })
-        console.log(`drawText: ${type} ${text} ${JSON.stringify(pos)}`)
-        this.ctx.font = "bold 30px Arial"; // 也可以设置为 "bold 30px Arial" 等
-        this.ctx.textAlign = "left"; // 文字对齐方式
-        this.ctx.fillStyle = "black"; // 文字颜色
-        this.ctx.fillText(text, pos.x, pos.y)
+        // 长度按照5张牌的宽度
+        let pos = this.calcStartPos(type, area, 1)
+        if (area == AREA_NAME && (type == "left" || type == "right")) {
+            // 保存当前的绘图状态
+            this.ctx.save();
+            // 将坐标系原点移动到文本的起始位置
+            this.ctx.translate(pos.x, pos.y);
+            // 旋转坐标系 -90 度，使得文本竖直向上
+            this.ctx.rotate(Math.PI / 2);
+            // 设置文本对齐方式为左对齐
+            this.ctx.textAlign = 'left';
+            // 绘制文本
+            this.ctx.fillText(text, 0, 0);
+            // 恢复之前保存的绘图状态
+            this.ctx.restore();
+        } else {
+            this.ctx.font = "bold 28px Arial"; // 也可以设置为 "bold 30px Arial" 等
+            this.ctx.textAlign = "left"; // 文字对齐方式
+            this.ctx.textBaseline = 'top';
+            this.ctx.fillStyle = "black"; // 文字颜色
+            this.ctx.fillText(text, pos.x, pos.y + 5) // +5是字体有突出,导致清除不掉
+        }
     }
 
-    drawResult(gameResult) {
+    drawResult(resultInfos) {
         // 设置表格单元格的大小
         const cellWidth = CELL_WIDTH;
         const cellHeight = CELL_HEIGHT;
 
-        let pos = this.calcStartPos("center", 1)
+        let pos = this.calcStartPos("center", AREA_CENTER, 1)
+        console.log(pos);
 
         // 绘制表格线条
         for (let i = 0; i <= ROW_NUM; i++) {
@@ -570,16 +680,23 @@ class PokerManager {
             this.ctx.lineTo(pos.x + cellWidth * i, pos.y + cellHeight * ROW_NUM);
             this.ctx.stroke();
         }
+         // 填充数据到表格
+        let data = []
+        data.push(['玩家名称', '座位号', '输赢', '银子'])
+        for (let i = 0; i < resultInfos.length; i++) {
+            let win = "赢"
+            if (!resultInfos[i].isWin) {
+                win = "输"
+            }
+            let row = []
+            row.push(resultInfos[i].userName)
+            row.push(resultInfos[i].chair)
+            row.push(win)
+            row.push(resultInfos[i].depositDiff)
+            data.push(row)
+        }
 
 
-
-        // 填充数据到表格
-        const data = [
-            ['玩家名称', '输赢', '银子'],
-            ['A1', 'B1', 'C1'],
-            ['A2', 'B2', 'C2'],
-            ['A3', 'B3', 'C3']
-        ];
         const textColor = 'black';
         const fontSize = 16;
         this.ctx.font = `${fontSize}px Arial`;

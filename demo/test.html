@@ -3,7 +3,7 @@
 <script src="./pokerManager.js"></script> <!-- 确保路径正确 -->'
 
 <body>
-    <canvas id="myowncanvas" width="1400" height="880"></canvas>
+    <canvas id="myowncanvas" width="1400" height="880" style="background-color: burlywood;"></canvas>
 </body>
 <script>
     var canvas = document.getElementById('myowncanvas').getContext('2d');
@@ -19,14 +19,16 @@
         rules: rules,
     })
 
+    mgr.drawBgLine()
+
     let users = [{
-        userID: "123",
+        userID: "12311111111",
         chair: 0
     }, {
-        userID: "456",
+        userID: "12311111111",
         chair: 1
     }, {
-        userID: "789",
+        userID: "78911111111",
         chair: 2
     }]
 
@@ -38,17 +40,17 @@
         }
     }, 0)
 
-    mgr.runAction("heiwai", {
+    mgr.runAction("heiwa", {
         chair: 0,
         isHeiwa: false
     }, 1)
 
-    mgr.runAction("heiwai", {
+    mgr.runAction("heiwa", {
         chair: 1,
         isHeiwa: false
     }, 2)
 
-    mgr.runAction("heiwai", {
+    mgr.runAction("heiwa", {
         chair: 2,
         isHeiwa: true
     }, 3)
@@ -61,9 +63,10 @@
         }
     }, 4)
 
-    mgr.runAction("result", {
+
+    // mgr.runAction("result", {
         
-    }, 5)
+    // }, 5)
     
     // mgr.runAction("auction", {
     //     chair: 0,
